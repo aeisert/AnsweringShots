@@ -1,0 +1,27 @@
+---
+title: "MarchMadness21"
+author: "Alex Eisert"
+date: "3/18/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(readr)
+```
+
+```{r}
+mm21 <- read_csv("~/Downloads/fivethirtyeight_ncaa_forecasts.csv")
+mm21$rd2_EV <- ifelse(mm21$team_seed <= 8, mm21$rd2_win * 3,
+                      mm21$rd2_win * (3 + (mm21$team_seed - (17 - mm21$team_seed))))
+mm21 <- mm21[1:64,]
+
+mm21 %>%
+  filter(grepl("Purdue", team_name) | grepl("North Texas", team_name)) %>%
+  select(team_name, team_seed, rd2_EV)
+
+mm21$rd3_EV <- ifelse(mm21$team_seed)
+```
+

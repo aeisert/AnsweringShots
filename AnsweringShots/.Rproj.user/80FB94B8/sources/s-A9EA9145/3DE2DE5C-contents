@@ -1,0 +1,255 @@
+---
+title: "AnsweringShots"
+author: "Alex Eisert"
+date: "3/11/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(reshape)
+library(tidyverse)
+```
+
+```{r}
+data <- read_csv("~/Downloads/NBA_PBP_2018-19.csv")
+##data <- data %>% filter(!is.na(Shooter))
+data <- data %>% filter(GameType=="regular")
+data$Make <- ifelse(data$ShotOutcome=="make", 1, 0)
+AnswerAttempt <- vector(mode = "numeric", length = 576346)
+for (i in 1:576346){
+AnswerAttempt[i] <- ifelse(i==1, 0,
+                            ifelse(i!=1 & !is.na(data$Shooter[i]) & data$Make[i-1]==1, 1, 0))
+}
+data$AnswerAttempt <- AnswerAttempt
+PriorToAnswer <- vector(mode = "numeric", length = 576346)
+for (i in 1:576346){
+PriorToAnswer[i] <- ifelse(i==576346,0,
+                           ifelse(AnswerAttempt[i+1]==1,1,0))
+}
+data$PriorToAnswer <- PriorToAnswer
+data$ThreePtAttempt <- ifelse(grepl("3-pt", data$ShotType), 1, 0)
+data$TwoPtJump <- ifelse(data$ShotType=="2-pt jump shot", 1, 0)
+data$Layup <- ifelse(data$ShotType=="2-pt layup", 1, 0)
+data$Dunk <- ifelse(data$ShotType=="2-pt dunk", 1, 0)
+data$Hook <- ifelse(data$ShotType=="2-pt hook shot", 1, 0)
+data$PriorNotAnswer <- ifelse(data$PriorToAnswer==1 & data$AnswerAttempt==0,1,0)
+
+PriorMake <- vector(mode = "numeric", length = 576346)
+
+for (i in 1:576346){
+  PriorMake[i] <- ifelse(i==1, 0, ifelse(data$Make[i-1]==1 & data$PriorToAnswer[i-1]==1, 1, 0))
+}
+data$PriorMake <- PriorMake
+
+SameAsBefore <- vector(mode = "numeric", length = 576346)
+
+for (i in 1:576346){
+  SameAsBefore[i] <- ifelse(i==1, 0, ifelse(data$ShotType[i-1]==data$ShotType[i], 1, 0))
+}
+data$SameAsBefore <- SameAsBefore
+
+##Tip-in is the other type; only two recorded
+##78742 3's, 58597 2-pt jumps, 60930 layups, 12734 dunks, 8452 hooks
+sum((data %>% filter(Hook==1))$Make)
+##27955, 24297, 33395, 11393, 4022 makes
+ThreesData <- data %>% filter(ThreePtAttempt==1)
+ThreesData %>% group_by(PriorNotAnswer) %>% summarize(FGP = mean(Make))
+ThreesData %>% group_by(AnswerAttempt) %>% summarize(FGP = mean(Make))
+data %>% group_by(ShotType) %>% summarize(FGP = mean(Make))
+sum(ThreesData$PriorNotAnswer)
+##13509
+sum(ThreesData$AnswerAttempt)
+##59742
+sum(ThreesData$PriorToAnswer)
+##57146
+tGroup1 <- anti_join(ThreesData, Three.Answers)
+tGroup1 <- tGroup1 %>% filter(PriorToAnswer==0)
+tGroup2 <- ThreesData %>% filter(AnswerAttempt==1)
+t.test(tGroup1$Make, tGroup2$Make, paired = FALSE, alternative = "two.sided")
+##Are answers more likely to be attempted after makes?
+ThreesData <- data %>% filter(ThreePtAttempt==1)
+##What about the percentage for answer attempts after makes?
+Three.Answers <- data %>% filter(PriorMake==1 & ThreePtAttempt==1 & SameAsBefore==1)
+t.test(tGroup1$Make, Three.Answers$Make, paired = FALSE, alternative = "two.sided")
+mean(tGroup1$Make)
+##3-pt attempts right after the other team made a 3 vs. all other 3-pt attempts
+
+Answers <- data %>% filter(PriorMake==1 & SameAsBefore==1)
+tGroup1 <- anti_join(data, Answers)
+tGroup1 <- tGroup1 %>% filter(!is.na(ShotType))
+t.test(tGroup1$Make, Answers$Make, paired = FALSE, alternative = "two.sided")
+
+TwoPtJumpAnswers <- data %>% filter(PriorMake==1 & TwoPtJump==1 & SameAsBefore==1)
+tGroup1 <- data %>% filter(TwoPtJump==1)
+tGroup1 <- anti_join(tGroup1, TwoPtJumpAnswers)
+t.test(tGroup1$Make, TwoPtJumpAnswers$Make, paired = FALSE, alternative = "two.sided")
+
+LayupAnswers <- data %>% filter(PriorMake==1 & Layup==1 & SameAsBefore==1)
+tGroup1 <- data %>% filter(Layup==1)
+tGroup1 <- anti_join(tGroup1, LayupAnswers)
+t.test(tGroup1$Make, LayupAnswers$Make, paired = FALSE, alternative = "two.sided")
+
+DunkAnswers <- data %>% filter(PriorMake==1 & Dunk==1 & SameAsBefore==1)
+tGroup1 <- data %>% filter(Dunk==1)
+tGroup1 <- anti_join(tGroup1, DunkAnswers)
+t.test(tGroup1$Make, DunkAnswers$Make, paired = FALSE, alternative = "two.sided")
+
+HookAnswers <- data %>% filter(PriorMake==1 & Hook==1 & SameAsBefore==1)
+tGroup1 <- data %>% filter(Hook==1)
+tGroup1 <- anti_join(tGroup1, HookAnswers)
+t.test(tGroup1$Make, HookAnswers$Make, paired = FALSE, alternative = "two.sided")
+
+PriorThree <- vector(mode = "numeric", length = 576346)
+for (i in 1:576346){
+  PriorThree[i] <- ifelse(i==1, 0, ifelse(data$ThreePtAttempt[i-1]==1,1,0))
+}
+data$PriorThree <- PriorThree
+ThreeResponses <- data %>% filter(PriorThree==1 & PriorMake==1)
+ThreeResponsesTwoPtJ <- ThreeResponses %>% filter(TwoPtJump==1)
+TwoPtJs <- data %>% filter(TwoPtJump==1)
+TwoPtJs <- anti_join(TwoPtJs, ThreeResponsesTwoPtJ)
+t.test(ThreeResponsesTwoPtJ$ShotDist, TwoPtJs$ShotDist)
+ThreeResponses.count <- ThreeResponses %>% count(ShotType)
+ThreeResponses.count$n <- ThreeResponses.count$n/17794
+ThreeResponses.count$n <- ThreeResponses.count$n*100
+tGroup1.count <- tGroup1 %>% count(ShotType)
+tGroup1.count$n <- tGroup1.count$n/201663
+tGroup1.count$n <- tGroup1.count$n*100
+tGroup1 <- anti_join(data, ThreeResponses)
+tGroup1 <- tGroup1 %>% filter(!is.na(Shooter))
+t.test(ThreeResponses$Dunk, tGroup1$Dunk, paired = FALSE, alternative = "two.sided")
+
+Shots <- data %>% filter(!is.na(Shooter))
+mean(Shots$ThreePtAttempt)
+
+PriorTwoPtJump <- vector(mode = "numeric", length = 576346)
+for (i in 1:576346){
+  PriorTwoPtJump[i] <- ifelse(i==1, 0, ifelse(data$TwoPtJump[i-1]==1,1,0))
+}
+data$PriorTwoPtJump <- PriorTwoPtJump
+TwoPtJumpResponses <- data %>% filter(PriorTwoPtJump==1 & PriorMake==1)
+tGroup1 <- anti_join(data, TwoPtJumpResponses)
+tGroup1 <- tGroup1 %>% filter(!is.na(Shooter))
+t.test(TwoPtJumpResponses$Hook, tGroup1$Hook, paired = FALSE, alternative = "two.sided")
+t.test(ThreeResponses$ThreePtAttempt, TwoPtJumpResponses$ThreePtAttempt, paired = FALSE, alternative = "two.sided")
+
+
+PriorLayup <- vector(mode = "numeric", length = 576346)
+for (i in 1:576346){
+  PriorLayup[i] <- ifelse(i==1, 0, ifelse(data$Layup[i-1]==1,1,0))
+}
+data$PriorLayup <- PriorLayup
+LayupResponses <- data %>% filter(PriorLayup==1 & PriorMake==1)
+tGroup1 <- anti_join(data, LayupResponses)
+tGroup1 <- tGroup1 %>% filter(!is.na(Shooter))
+t.test(LayupResponses$Layup, tGroup1$Layup, paired = FALSE, alternative = "two.sided")
+##Because layups happen often on fastbreaks, and successful fastbreaks are almost never immediately followed by another fastbreak
+
+PriorHook <- vector(mode = "numeric", length = 576346)
+for (i in 1:576346){
+  PriorHook[i] <- ifelse(i==1, 0, ifelse(data$Hook[i-1]==1,1,0))
+}
+data$PriorHook <- PriorHook
+HookResponses <- data %>% filter(PriorHook==1 & PriorMake==1)
+tGroup1 <- anti_join(data, HookResponses)
+tGroup1 <- tGroup1 %>% filter(!is.na(Shooter))
+t.test(HookResponses$ThreePtAttempt, tGroup1$ThreePtAttempt, paired = FALSE, alternative = "two.sided")
+
+PriorDunk <- vector(mode = "numeric", length = 576346)
+for (i in 1:576346){
+  PriorDunk[i] <- ifelse(i==1, 0, ifelse(data$Dunk[i-1]==1,1,0))
+}
+data$PriorDunk <- PriorDunk
+DunkResponses <- data %>% filter(PriorDunk==1 & PriorMake==1)
+tGroup1 <- anti_join(data, DunkResponses)
+tGroup1 <- tGroup1 %>% filter(!is.na(Shooter))
+t.test(DunkResponses$Dunk, tGroup1$Dunk, paired = FALSE, alternative = "two.sided")
+##Dunks also far more likely to happen on fastbreaks/not be followed by fastbreaks themselves
+PriorMiss <- vector(mode = "numeric", length = 576346)
+for (i in 1:576346){
+  PriorMiss[i] <- ifelse(i==1 | i==2, 0, ifelse(!is.na(data$Shooter[i-2]) & !is.na(data$Shooter[i]) & data$ReboundType[i-1]=="defensive",1,0))
+}
+data$PriorMiss <- PriorMiss
+
+PriorMissedThree <- vector(mode = "numeric", length = 576346)
+for (i in 1:576346){
+  PriorMissedThree[i] <- ifelse(i==1 | i==2, 0, ifelse(data$PriorMiss[i]==1 & data$ThreePtAttempt[i-2]==1,1,0))
+}
+
+PriorMissedTwoJ <- vector(mode = "numeric", length = 576346)
+for (i in 1:576346){
+  PriorMissedTwoJ[i] <- ifelse(i==1 | i==2, 0, ifelse(data$PriorMiss[i]==1 & data$TwoPtJump[i-2]==1,1,0))
+}
+
+PriorMissedHook <- vector(mode = "numeric", length = 576346)
+for (i in 1:576346){
+  PriorMissedHook[i] <- ifelse(i==1 | i==2, 0, ifelse(data$PriorMiss[i]==1 & data$Hook[i-2]==1,1,0))
+}
+data$PriorMissedHook <- PriorMissedHook
+HookResponses2 <- data %>% filter(PriorMissedHook==1)
+tGroup1 <- anti_join(data, HookResponses2)
+tGroup1 <- tGroup1 %>% filter(!is.na(Shooter))
+t.test(HookResponses2$Hook, tGroup1$Hook, paired = FALSE, alternative = "two.sided")
+
+data$PriorMissedTwoJ <- PriorMissedTwoJ  
+TwoPtJumpResponses2 <- data %>% filter(PriorMissedTwoJ==1)
+tGroup1 <- anti_join(data, TwoPtJumpResponses2)
+tGroup1 <- tGroup1 %>% filter(!is.na(Shooter))
+t.test(TwoPtJumpResponses2$TwoPtJump, tGroup1$TwoPtJump, paired = FALSE, alternative = "two.sided")
+
+data$PriorMissedThree <- PriorMissedThree
+ThreeResponses2 <- data %>% filter(PriorMissedThree==1)
+tGroup1 <- anti_join(data, ThreeResponses2)
+tGroup1 <- tGroup1 %>% filter(!is.na(Shooter))
+t.test(ThreeResponses2$TwoPtJump, tGroup1$TwoPtJump, paired = FALSE, alternative = "two.sided")
+tGroup1 <- anti_join(data, ThreeResponses2)
+tGroup1 <- tGroup1 %>% filter(ThreePtAttempt==1)
+t.test(ThreeResponses2$Make, tGroup1$Make)
+#Threes, 2-pt jumps, layups, dunks, hooks
+AnswerAttempts <- c(38.7, 31.3, 23.7, 4.90, 4.67)
+OtherAttempts <- c(35.6, 26.3, 28.1, 5.83, 3.84)
+
+df <- data.frame(matrix(, nrow=2, ncol=5))
+df[1,] <- AnswerAttempts
+df[2,] <- OtherAttempts
+df[3,] <- c("3-pt", "2-ptJ", "Layup", "Dunk", "Hook")
+df <- as.data.frame(t(df))
+colnames(df) <- c("Answer Attempts", "Other Attempts", "Shot Type")
+melted <- melt(df, id="Shot Type")
+melted$value <- as.numeric(melted$value)
+colnames(melted)[2] <- "Shot Selection"
+level_order <- c("3-pt", "2-ptJ", "Layup", "Dunk", "Hook")
+print(ggplot(melted,aes(x=factor(`Shot Type`, level = level_order), y=value, fill=`Shot Selection`)) + geom_bar(stat="identity", position="dodge", alpha=.7) + ylab("Percentage of Shots") + xlab("Shot Type"))
+
+ggsave("ShotSelection.jpg")
+
+guh1 <- ThreeResponses %>% count(ShotType)
+guh1$AfterMadeThrees <- (guh1$n/17794)*100
+guh <- data %>% filter(!is.na(Shooter)) %>% count(ShotType)
+guh$Otherwise <- (guh$n/219457)*100
+guh <- guh[-5,]
+guh$ShotType <- c("Dunk", "Hook", "2ptJ", "Layup", "3pt")
+guh1$ShotType <- c("Dunk", "Hook", "2ptJ", "Layup", "3pt")
+level_order <- c("Hook", "Dunk", "Layup", "2ptJ", "3pt")
+guh <- guh %>% select(ShotType, Otherwise)
+guh1 <- guh1 %>% select(ShotType, AfterMadeThrees)
+guh$AfterMadeThrees <- guh1$AfterMadeThrees
+guh2 <- as.data.frame(t(guh))
+guh <- guh %>% gather(key = "ShotSelection", value = "Percentages", c("Otherwise", "AfterMadeThrees"))
+guh
+
+print(ggplot(guh,aes(x=factor(ShotType, level = level_order), y=Percentages, fill=ShotSelection)) + geom_bar(stat="identity", position="dodge", alpha=.7) + ylab("Percentage of Shots") + xlab("Shot Type"))
+
+ggsave("ShotSelection2.jpg")
+```
+
+```{r}
+tGroup1.count
+sum(data$ThreePtAttempt)
+```
+
